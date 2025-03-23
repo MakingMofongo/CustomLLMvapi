@@ -1,0 +1,11 @@
+flask
+werkzeug
+openai
+python-dotenv
+gunicorn
+quart
+hypercorn
+httpx
+cachetools
+streamlit
+pandas

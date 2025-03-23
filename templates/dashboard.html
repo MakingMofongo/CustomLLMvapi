@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vapi Proxy Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --primary-color: #4A6FFF;
+            --secondary-color: #5D5FEF;
+            --success-color: #28a745;
+            --error-color: #dc3545;
+            --warning-color: #ffc107;
+            --dark-color: #343a40;
+            --light-color: #f8f9fa;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: #f5f7fb;
+            color: #333;
+            padding-top: 60px;
+        }
+        
+        .navbar {
+            background-color: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+        
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            margin-bottom: 20px;
+            border: none;
+        }
+        
+        .card-header {
+            background-color: white;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            font-weight: 600;
+            padding: 15px 20px;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        
+        .metric-card {
+            text-align: center;
+            padding: 20px;
+            height: 100%;
+        }
+        
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 10px 0;
+            color: var(--primary-color);
+        }
+        
+        .metric-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .table thead th {
+            border-top: none;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .table tbody tr {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .table tbody tr:hover {
+            background-color: rgba(74, 111, 255, 0.05);
+        }
+        
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-processing {
+            background-color: rgba(255, 193, 7, 0.2);
+            color: #856404;
+        }
+        
+        .status-completed {
+            background-color: rgba(40, 167, 69, 0.2);
+            color: #155724;
+        }
+        
+        .status-error {
+            background-color: rgba(220, 53, 69, 0.2);
+            color: #721c24;
+        }
+        
+        .json-viewer {
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 15px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .refresh-icon {
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        
+        .refresh-icon:hover {
+            transform: rotate(180deg);
+        }
+        
+        .tab-content {
+            padding: 20px;
+        }
+        
+        .nav-tabs .nav-link {
+            color: #6c757d;
+            font-weight: 500;
+        }
+        
+        .nav-tabs .nav-link.active {
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        .error-type {
+            font-weight: 600;
+            color: var(--error-color);
+        }
+        
+        .auto-refresh-toggle {
+            display: flex;
+            align-items: center;
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+        
+        .form-switch {
+            margin-left: 10px;
+        }
+        
+        #request-detail-modal .modal-dialog {
+            max-width: 900px;
+        }
+        
+        #request-detail-modal .modal-body {
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .code-block {
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 15px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+        
+        /* Pulse animation for real-time indicator */
+        .pulse {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success-color);
+            margin-right: 5px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-speedometer2 me-2"></i>Vapi Proxy Dashboard
+            </a>
+            <div class="d-flex align-items-center">
+                <div class="pulse"></div>
+                <span class="text-muted small">Real-time</span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row mt-4">
+            <div class="col-md-12 mb-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">Performance Overview</h4>
+                    <div class="d-flex align-items-center">
+                        <div class="auto-refresh-toggle me-3">
+                            <span>Auto-refresh</span>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
+                            </div>
+                        </div>
+                        <i class="bi bi-arrow-clockwise fs-4 refresh-icon" id="refresh-metrics"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card metric-card">
+                    <div class="metric-label">Total Requests</div>
+                    <div class="metric-value" id="total-requests">0</div>
+                    <div class="text-muted small">All-time</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card">
+                    <div class="metric-label">Avg. TTFT</div>
+                    <div class="metric-value" id="avg-ttft">0 ms</div>
+                    <div class="text-muted small">Time to First Token</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card">
+                    <div class="metric-label">Tokens/Second</div>
+                    <div class="metric-value" id="tokens-per-second">0</div>
+                    <div class="text-muted small">Average throughput</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card metric-card">
+                    <div class="metric-label">Error Rate</div>
+                    <div class="metric-value" id="error-rate">0%</div>
+                    <div class="text-muted small">Total: <span id="error-count">0</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Recent Requests</span>
+                        <i class="bi bi-arrow-clockwise refresh-icon" id="refresh-requests"></i>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Request ID</th>
+                                    <th>Model</th>
+                                    <th>Status</th>
+                                    <th>TTFT</th>
+                                    <th>Total Time</th>
+                                    <th>Tokens</th>
+                                </tr>
+                            </thead>
+                            <tbody id="requests-table">
+                                <tr>
+                                    <td colspan="7" class="text-center py-4">No requests yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Error Log</span>
+                        <i class="bi bi-arrow-clockwise refresh-icon" id="refresh-errors"></i>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Request ID</th>
+                                    <th>Error Type</th>
+                                    <th>Message</th>
+                                </tr>
+                            </thead>
+                            <tbody id="errors-table">
+                                <tr>
+                                    <td colspan="4" class="text-center py-4">No errors logged</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Request Detail Modal -->
+    <div class="modal fade" id="request-detail-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Request Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs" id="requestDetailTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab">Overview</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="request-tab" data-bs-toggle="tab" data-bs-target="#request" type="button" role="tab">Vapi Request</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="openai-tab" data-bs-toggle="tab" data-bs-target="#openai" type="button" role="tab">OpenAI Request</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="response-tab" data-bs-toggle="tab" data-bs-target="#response" type="button" role="tab">Response</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="metrics-tab" data-bs-toggle="tab" data-bs-target="#metrics" type="button" role="tab">Metrics</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content" id="requestDetailTabsContent">
+                        <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>Request Info</h6>
+                                    <table class="table table-sm">
+                                        <tr>
+                                            <th>ID</th>
+                                            <td id="detail-id"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <td id="detail-timestamp"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Client IP</th>
+                                            <td id="detail-ip"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Model</th>
+                                            <td id="detail-model"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Status</th>
+                                            <td id="detail-status"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Streaming</th>
+                                            <td id="detail-streaming"></td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>Performance</h6>
+                                    <table class="table table-sm">
+                                        <tr>
+                                            <th>Time to First Token</th>
+                                            <td id="detail-ttft"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Total Time</th>
+                                            <td id="detail-total-time"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Tokens</th>
+                                            <td id="detail-tokens"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Tokens/Second</th>
+                                            <td id="detail-tokens-per-second"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>API Connection Time</th>
+                                            <td id="detail-connection-time"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Backend Processing</th>
+                                            <td id="detail-backend-time"></td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="request" role="tabpanel">
+                            <pre class="json-viewer" id="detail-request-data"></pre>
+                        </div>
+                        <div class="tab-pane fade" id="openai" role="tabpanel">
+                            <pre class="json-viewer" id="detail-openai-request"></pre>
+                        </div>
+                        <div class="tab-pane fade" id="response" role="tabpanel">
+                            <pre class="json-viewer" id="detail-response-data"></pre>
+                        </div>
+                        <div class="tab-pane fade" id="metrics" role="tabpanel">
+                            <pre class="json-viewer" id="detail-metrics-data"></pre>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // DOM Elements
+        const totalRequestsEl = document.getElementById('total-requests');
+        const avgTtftEl = document.getElementById('avg-ttft');
+        const tokensPerSecondEl = document.getElementById('tokens-per-second');
+        const errorRateEl = document.getElementById('error-rate');
+        const errorCountEl = document.getElementById('error-count');
+        const requestsTableEl = document.getElementById('requests-table');
+        const errorsTableEl = document.getElementById('errors-table');
+        const refreshMetricsBtn = document.getElementById('refresh-metrics');
+        const refreshRequestsBtn = document.getElementById('refresh-requests');
+        const refreshErrorsBtn = document.getElementById('refresh-errors');
+        const autoRefreshToggle = document.getElementById('auto-refresh');
+        const requestDetailModal = new bootstrap.Modal(document.getElementById('request-detail-modal'));
+
+        // Refresh timers
+        let metricsTimer;
+        let requestsTimer;
+        let errorsTimer;
+        const REFRESH_INTERVAL = 3000; // 3 seconds
+
+        // Initialize data
+        let metrics = {};
+        let requests = [];
+        let errors = [];
+        
+        // Format functions
+        function formatTime(seconds) {
+            if (seconds < 0.001) {
+                return (seconds * 1000).toFixed(2) + ' μs';
+            } else if (seconds < 1) {
+                return (seconds * 1000).toFixed(2) + ' ms';
+            } else {
+                return seconds.toFixed(2) + ' s';
+            }
+        }
+        
+        function formatNumber(num) {
+            return num.toLocaleString();
+        }
+        
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr.replace(' ', 'T'));
+            return date.toLocaleString();
+        }
+        
+        function syntaxHighlight(json) {
+            if (!json) return '';
+            if (typeof json !== 'string') {
+                json = JSON.stringify(json, null, 2);
+            }
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'key';
+                        return '<span style="color: #2980b9;">' + match + '</span>';
+                    } else {
+                        cls = 'string';
+                        return '<span style="color: #27ae60;">' + match + '</span>';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'boolean';
+                    return '<span style="color: #8e44ad;">' + match + '</span>';
+                } else if (/null/.test(match)) {
+                    cls = 'null';
+                    return '<span style="color: #e74c3c;">' + match + '</span>';
+                } else {
+                    return '<span style="color: #e67e22;">' + match + '</span>';
+                }
+            });
+        }
+        
+        // API fetch functions
+        async function fetchMetrics() {
+            try {
+                const response = await fetch('/dashboard/api/metrics');
+                metrics = await response.json();
+                updateMetricsUI();
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+            }
+        }
+        
+        async function fetchRequests() {
+            try {
+                const response = await fetch('/dashboard/api/requests');
+                requests = await response.json();
+                updateRequestsTable();
+            } catch (error) {
+                console.error('Error fetching requests:', error);
+            }
+        }
+        
+        async function fetchErrors() {
+            try {
+                const response = await fetch('/dashboard/api/errors');
+                errors = await response.json();
+                updateErrorsTable();
+            } catch (error) {
+                console.error('Error fetching errors:', error);
+            }
+        }
+        
+        async function fetchRequestDetail(requestId) {
+            try {
+                const response = await fetch(`/dashboard/api/request/${requestId}`);
+                const data = await response.json();
+                populateRequestDetailModal(data);
+                requestDetailModal.show();
+            } catch (error) {
+                console.error('Error fetching request details:', error);
+            }
+        }
+        
+        // UI update functions
+        function updateMetricsUI() {
+            totalRequestsEl.textContent = formatNumber(metrics.total_requests);
+            avgTtftEl.textContent = formatTime(metrics.avg_ttft);
+            tokensPerSecondEl.textContent = formatNumber(Math.round(metrics.avg_tokens_per_sec));
+            
+            const errorRate = metrics.total_requests > 0 
+                ? (metrics.error_count / metrics.total_requests) * 100 
+                : 0;
+            errorRateEl.textContent = errorRate.toFixed(1) + '%';
+            errorCountEl.textContent = metrics.error_count;
+            
+            // Update color based on error rate
+            if (errorRate > 10) {
+                errorRateEl.style.color = 'var(--error-color)';
+            } else if (errorRate > 5) {
+                errorRateEl.style.color = 'var(--warning-color)';
+            } else {
+                errorRateEl.style.color = 'var(--primary-color)';
+            }
+        }
+        
+        function updateRequestsTable() {
+            if (requests.length === 0) {
+                requestsTableEl.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center py-4">No requests yet</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            // Sort by timestamp descending (newest first)
+            const sortedRequests = [...requests].sort((a, b) => 
+                new Date(b.timestamp) - new Date(a.timestamp)
+            );
+            
+            requestsTableEl.innerHTML = sortedRequests.slice(0, 20).map(req => {
+                const metrics = req.metrics || {};
+                const ttft = metrics.ttft || 0;
+                const totalTime = metrics.total_time || 0;
+                const tokens = metrics.total_tokens || 0;
+                
+                let statusClass = '';
+                switch(req.status) {
+                    case 'processing': statusClass = 'status-processing'; break;
+                    case 'completed': statusClass = 'status-completed'; break;
+                    case 'error': statusClass = 'status-error'; break;
+                }
+                
+                return `
+                    <tr data-request-id="${req.id}" class="request-row">
+                        <td>${formatDate(req.timestamp)}</td>
+                        <td>${req.id}</td>
+                        <td>${req.model}</td>
+                        <td><span class="status-badge ${statusClass}">${req.status}</span></td>
+                        <td>${formatTime(ttft)}</td>
+                        <td>${formatTime(totalTime)}</td>
+                        <td>${formatNumber(tokens)}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            // Add click handler for rows
+            document.querySelectorAll('.request-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const requestId = row.getAttribute('data-request-id');
+                    fetchRequestDetail(requestId);
+                });
+            });
+        }
+        
+        function updateErrorsTable() {
+            if (errors.length === 0) {
+                errorsTableEl.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center py-4">No errors logged</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            // Sort by timestamp descending (newest first)
+            const sortedErrors = [...errors].sort((a, b) => 
+                new Date(b.timestamp) - new Date(a.timestamp)
+            );
+            
+            errorsTableEl.innerHTML = sortedErrors.slice(0, 20).map(err => {
+                return `
+                    <tr data-request-id="${err.request_id}" class="request-row">
+                        <td>${formatDate(err.timestamp)}</td>
+                        <td>${err.request_id}</td>
+                        <td class="error-type">${err.error_type}</td>
+                        <td>${err.error_message}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            // Add click handler for rows
+            document.querySelectorAll('.request-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const requestId = row.getAttribute('data-request-id');
+                    fetchRequestDetail(requestId);
+                });
+            });
+        }
+        
+        function populateRequestDetailModal(data) {
+            const metrics = data.metrics || {};
+            
+            // Overview tab
+            document.getElementById('detail-id').textContent = data.id;
+            document.getElementById('detail-timestamp').textContent = formatDate(data.timestamp);
+            document.getElementById('detail-ip').textContent = data.client_ip || 'Unknown';
+            document.getElementById('detail-model').textContent = data.model;
+            document.getElementById('detail-status').textContent = data.status;
+            document.getElementById('detail-streaming').textContent = data.is_streaming ? 'Yes' : 'No';
+            
+            // Performance metrics
+            document.getElementById('detail-ttft').textContent = formatTime(metrics.ttft || 0);
+            document.getElementById('detail-total-time').textContent = formatTime(metrics.total_time || 0);
+            document.getElementById('detail-tokens').textContent = formatNumber(metrics.total_tokens || 0);
+            document.getElementById('detail-tokens-per-second').textContent = formatNumber(Math.round(metrics.tokens_per_second || 0));
+            document.getElementById('detail-connection-time').textContent = formatTime(metrics.api_connection_time || 0);
+            document.getElementById('detail-backend-time').textContent = formatTime(metrics.backend_processing_time || 0);
+            
+            // Request/response data
+            document.getElementById('detail-request-data').innerHTML = syntaxHighlight(data.request_data);
+            document.getElementById('detail-openai-request').innerHTML = syntaxHighlight(data.openai_request);
+            document.getElementById('detail-response-data').innerHTML = syntaxHighlight(data.response_data);
+            document.getElementById('detail-metrics-data').innerHTML = syntaxHighlight(metrics);
+        }
+        
+        // Auto-refresh functions
+        function startAutoRefresh() {
+            if (metricsTimer) clearInterval(metricsTimer);
+            if (requestsTimer) clearInterval(requestsTimer);
+            if (errorsTimer) clearInterval(errorsTimer);
+            
+            metricsTimer = setInterval(fetchMetrics, REFRESH_INTERVAL);
+            requestsTimer = setInterval(fetchRequests, REFRESH_INTERVAL);
+            errorsTimer = setInterval(fetchErrors, REFRESH_INTERVAL);
+        }
+        
+        function stopAutoRefresh() {
+            if (metricsTimer) clearInterval(metricsTimer);
+            if (requestsTimer) clearInterval(requestsTimer);
+            if (errorsTimer) clearInterval(errorsTimer);
+        }
+        
+        // Event listeners
+        refreshMetricsBtn.addEventListener('click', fetchMetrics);
+        refreshRequestsBtn.addEventListener('click', fetchRequests);
+        refreshErrorsBtn.addEventListener('click', fetchErrors);
+        
+        autoRefreshToggle.addEventListener('change', function() {
+            if (this.checked) {
+                startAutoRefresh();
+            } else {
+                stopAutoRefresh();
+            }
+        });
+        
+        // Initial data load
+        fetchMetrics();
+        fetchRequests();
+        fetchErrors();
+        
+        // Start auto-refresh if enabled
+        if (autoRefreshToggle.checked) {
+            startAutoRefresh();
+        }
+    </script>
+</body>
+</html> 
