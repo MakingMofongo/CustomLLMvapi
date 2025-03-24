@@ -270,6 +270,26 @@ class VAPIAssistant:
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to delete assistant: {str(e)}")
 
+    def get_all_assistants(self):
+        """
+        Get all VAPI assistants
+        
+        Returns:
+            list: List of all assistants
+        """
+        try:
+            response = requests.get(
+                self.base_url,
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to get assistants: {str(e)}")
+            if hasattr(e, 'response'):
+                print(f"Response content: {e.response.content}")
+            raise
+
     def update_model_url_for_all(self):
         """
         Update the model URL for all assistants with the latest ngrok URL
@@ -302,6 +322,65 @@ class VAPIAssistant:
             for assistant in assistants:
                 try:
                     assistant_id = assistant["id"]
+                    current_model = assistant.get("model", {})
+                    
+                    # Prepare model payload
+                    model_config = current_model.copy()
+                    model_config["provider"] = "custom-llm"
+                    model_config["url"] = ngrok_url
+
+                    # Update assistant
+                    update_response = requests.patch(
+                        f"{self.base_url}/{assistant_id}",
+                        headers=self.headers,
+                        json={"model": model_config}
+                    )
+                    update_response.raise_for_status()
+                    results["success"].append(assistant_id)
+                except Exception as e:
+                    results["failed"].append({
+                        "id": assistant_id,
+                        "error": str(e)
+                    })
+
+            return results
+        except Exception as e:
+            raise Exception(f"Failed to update model URLs: {str(e)}")
+
+    def update_model_url_for_selected(self, assistant_ids: List[str]):
+        """
+        Update the model URL for selected assistants with the latest ngrok URL
+        
+        Args:
+            assistant_ids (List[str]): List of assistant IDs to update
+        
+        Returns:
+            dict: Summary of the update operation
+        """
+        try:
+            # Get new ngrok URL
+            ngrok_url = get_active_ngrok_url()
+            if not ngrok_url:
+                raise Exception("Failed to get ngrok URL")
+
+            results = {
+                "success": [],
+                "failed": [],
+                "total": len(assistant_ids),
+                "new_url": ngrok_url
+            }
+
+            # Update each selected assistant
+            for assistant_id in assistant_ids:
+                try:
+                    # Get current assistant data
+                    response = requests.get(
+                        f"{self.base_url}/{assistant_id}",
+                        headers=self.headers
+                    )
+                    response.raise_for_status()
+                    assistant = response.json()
+                    
                     current_model = assistant.get("model", {})
                     
                     # Prepare model payload

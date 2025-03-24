@@ -165,37 +165,17 @@ def delete_assistant(assistant_id: str) -> bool:
 
 # Add function to manage message roles
 def render_message_form(key_prefix: str, existing_messages: List[Dict] = None):
-    messages = existing_messages or []
+    """Render form for managing system messages with proper state handling"""
+    # Initialize messages in session state if not present
+    if f"{key_prefix}_messages" not in st.session_state:
+        st.session_state[f"{key_prefix}_messages"] = existing_messages or []
     
-    # Container for all messages
     st.write("System Messages")
     messages_container = st.container()
     
-    # Add new message section
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        new_role = st.selectbox(
-            "New Message Role",
-            ["assistant", "function", "system", "tool", "user"],
-            key=f"{key_prefix}_new_role"
-        )
-    with col2:
-        # This will be handled in the form submission
-        st.markdown("&nbsp;")  # Spacer for alignment
-        
-    new_content = st.text_area(
-        "New Message Content",
-        key=f"{key_prefix}_new_content",
-        height=100
-    )
-    
-    # Store current messages in session state
-    if f"{key_prefix}_messages" not in st.session_state:
-        st.session_state[f"{key_prefix}_messages"] = messages
-    
     # Display existing messages
-    for i, msg in enumerate(st.session_state[f"{key_prefix}_messages"]):
-        with messages_container:
+    with messages_container:
+        for i, msg in enumerate(st.session_state[f"{key_prefix}_messages"]):
             st.markdown("---")
             col1, col2, col3 = st.columns([2, 6, 1])
             with col1:
@@ -203,10 +183,34 @@ def render_message_form(key_prefix: str, existing_messages: List[Dict] = None):
             with col2:
                 st.write(f"**Content:** {msg['content']}")
             with col3:
-                # Mark for deletion (will be handled in form submission)
-                st.checkbox("Delete", key=f"{key_prefix}_delete_{i}")
+                if st.button("🗑️", key=f"{key_prefix}_delete_{i}"):
+                    st.session_state[f"{key_prefix}_messages"].pop(i)
+                    st.rerun()
     
-    # Return current messages and new message data
+    # New message input
+    st.markdown("### Add New Message")
+    new_role = st.selectbox(
+        "Role",
+        ["system", "assistant", "function", "tool", "user"],
+        key=f"{key_prefix}_new_role"
+    )
+    new_content = st.text_area(
+        "Content",
+        key=f"{key_prefix}_new_content",
+        height=100
+    )
+    
+    # Add message button
+    if st.button("Add Message", key=f"{key_prefix}_add_msg"):
+        if new_content:  # Only add if content is not empty
+            st.session_state[f"{key_prefix}_messages"].append({
+                "role": new_role,
+                "content": new_content
+            })
+            # Clear the content input
+            st.session_state[f"{key_prefix}_new_content"] = ""
+            st.rerun()
+    
     return {
         "current_messages": st.session_state[f"{key_prefix}_messages"],
         "new_message": {
@@ -220,7 +224,7 @@ def render_assistant_management():
     st.title("Assistant Management")
     vapi = VAPIAssistant()
     
-    # Add tab selection in the sidebar with new Show Assistants option
+    # Add tab selection in the sidebar
     operation = st.sidebar.radio(
         "Operation",
         ["Show Assistants", "Create Assistant", "Update Assistant", "Delete Assistant", "Update Model URL"],
@@ -237,127 +241,154 @@ def render_assistant_management():
 
     # Handle different operations
     if operation == "Update Model URL":
-        st.subheader("Update Model URL for All Assistants")
-        st.write("This will update the model URL for all assistants with the latest ngrok URL.")
+        st.subheader("Update Model URL for Selected Assistants")
+        st.write("Select the assistants you want to update with the latest ngrok URL.")
         
-        if st.button("Update Model URL for All Assistants", type="primary"):
-            try:
-                with st.spinner("Updating model URLs..."):
-                    results = vapi.update_model_url_for_all()
+        try:
+            # Get all assistants using the existing method
+            assistants = vapi.get_all_assistants()
+            
+            if not assistants:
+                st.info("No assistants found.")
+                return
+            
+            # Create checkboxes for each assistant
+            selected_assistants = {}
+            for assistant in assistants:
+                # Create a unique key for each checkbox
+                checkbox_key = f"select_assistant_{assistant['id']}"
                 
-                # Display results
-                st.success(f"Successfully updated {len(results['success'])} out of {results['total']} assistants")
-                st.write(f"New URL: `{results['new_url']}`")
+                # Create an expander for each assistant to show details
+                with st.expander(f"{assistant['name']} ({assistant['model']['model']})"):
+                    # Show current model URL
+                    st.text(f"Current URL: {assistant['model'].get('url', 'Not set')}")
+                    
+                    # Add checkbox for selection
+                    selected_assistants[assistant['id']] = st.checkbox(
+                        "Select for update",
+                        key=checkbox_key
+                    )
+            
+            # Add a "Select All" checkbox
+            if assistants:
+                col1, col2 = st.columns([1, 6])
+                with col1:
+                    if st.checkbox("Select All", key="select_all_assistants"):
+                        for assistant_id in selected_assistants:
+                            selected_assistants[assistant_id] = True
+            
+            # Update button
+            if st.button("Update Selected Assistants", type="primary"):
+                # Get list of selected assistant IDs
+                to_update = [aid for aid, selected in selected_assistants.items() if selected]
                 
-                if results['failed']:
-                    st.error("Some updates failed:")
-                    for failure in results['failed']:
-                        st.write(f"- Assistant ID {failure['id']}: {failure['error']}")
-                        
-                # Show successful updates
-                if results['success']:
-                    with st.expander("Successfully updated assistants"):
-                        for assistant_id in results['success']:
-                            st.write(f"- {assistant_id}")
-            except Exception as e:
-                st.error(f"Error updating model URLs: {str(e)}")
+                if not to_update:
+                    st.warning("Please select at least one assistant to update.")
+                    return
+                
+                try:
+                    with st.spinner("Updating model URLs..."):
+                        results = vapi.update_model_url_for_selected(to_update)
+                    
+                    # Display results
+                    st.success(f"Successfully updated {len(results['success'])} out of {len(to_update)} assistants")
+                    st.write(f"New URL: `{results['new_url']}`")
+                    
+                    if results['failed']:
+                        st.error("Some updates failed:")
+                        for failure in results['failed']:
+                            st.write(f"- Assistant ID {failure['id']}: {failure['error']}")
+                            
+                    # Show successful updates
+                    if results['success']:
+                        with st.expander("Successfully updated assistants"):
+                            for assistant_id in results['success']:
+                                # Find assistant name from the original list
+                                assistant_name = next(
+                                    (a['name'] for a in assistants if a['id'] == assistant_id),
+                                    assistant_id
+                                )
+                                st.write(f"- {assistant_name}")
+                except Exception as e:
+                    st.error(f"Error updating model URLs: {str(e)}")
+        
+        except Exception as e:
+            st.error(f"Error loading assistants: {str(e)}")
     
     elif operation == "Show Assistants":
-        # Get all assistants
-        assistants = get_assistants()
-        if not assistants:
-            st.info("No assistants created yet.")
-            return
-            
-        # Display assistants with detailed configuration
-        for assistant in assistants:
-            with st.expander(f"{assistant['name']} ({assistant['model']})", expanded=True):
-                # Basic Information
-                st.markdown("### Basic Information")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**ID:** {assistant['id']}")
-                    st.write(f"**Name:** {assistant['name']}")
-                    st.write(f"**Model:** {assistant['model']}")
-                with col2:
-                    # Handle timestamps more safely
-                    try:
-                        created_at = float(assistant['created_at']) if isinstance(assistant['created_at'], (int, float, str)) else 0
-                        updated_at = float(assistant['updated_at']) if isinstance(assistant['updated_at'], (int, float, str)) else 0
-                        
-                        st.write(f"**Created:** {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(created_at))}")
-                        st.write(f"**Last Updated:** {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(updated_at))}")
-                    except (ValueError, TypeError):
-                        st.write("**Created:** Not available")
-                        st.write("**Last Updated:** Not available")
+        try:
+            # Get all assistants directly from VAPI
+            assistants = vapi.get_all_assistants()
+            if not assistants:
+                st.info("No assistants created yet.")
+                return
                 
-                if assistant.get('description'):
-                    st.write(f"**Description:** {assistant['description']}")
-                
-                # Transcriber Settings
-                st.markdown("### Transcriber Settings")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Provider:** {assistant.get('transcriber_provider', 'Not set')}")
-                with col2:
-                    st.write(f"**Language:** {assistant.get('language', 'Not set')}")
-                
-                # Voice Settings
-                st.markdown("### Voice Settings")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Provider:** {assistant.get('voice_provider', 'Not set')}")
-                with col2:
-                    st.write(f"**Voice ID:** {assistant.get('voice_id', 'Not set')}")
-                
-                # First Message Settings
-                st.markdown("### First Message Settings")
-                st.write(f"**Mode:** {assistant.get('first_message_mode', 'Not set')}")
-                if assistant.get('first_message'):
-                    st.write("**First Message:**")
-                    st.text(assistant.get('first_message'))
-                
-                # System Messages
-                if assistant.get('messages'):
-                    st.markdown("### System Messages")
-                    try:
-                        messages = json.loads(assistant['messages']) if isinstance(assistant['messages'], str) else assistant['messages']
-                        for msg in messages:
-                            with st.expander(f"Message ({msg.get('role', 'unknown')})"):
-                                st.text(msg.get('content', ''))
-                    except Exception as e:
-                        st.error(f"Error displaying messages: {str(e)}")
+            # Display assistants with detailed configuration
+            for assistant in assistants:
+                with st.expander(f"{assistant['name']} ({assistant['model']['model']})", expanded=False):
+                    # Basic Information
+                    st.markdown("### Basic Information")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write(f"**ID:** {assistant['id']}")
+                        st.write(f"**Name:** {assistant['name']}")
+                        st.write(f"**Model:** {assistant['model']['model']}")
+                    with col2:
+                        st.write(f"**Created:** {assistant['createdAt']}")
+                        st.write(f"**Last Updated:** {assistant['updatedAt']}")
+                    
+                    # Transcriber Settings
+                    st.markdown("### Transcriber Settings")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write(f"**Provider:** {assistant['transcriber']['provider']}")
+                    with col2:
+                        st.write(f"**Language:** {assistant['transcriber']['language']}")
+                    
+                    # Voice Settings
+                    st.markdown("### Voice Settings")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write(f"**Provider:** {assistant['voice']['provider']}")
+                    with col2:
+                        st.write(f"**Voice ID:** {assistant['voice']['voiceId']}")
+                    
+                    # First Message Settings
+                    st.markdown("### First Message Settings")
+                    st.write(f"**Mode:** {assistant.get('firstMessageMode', 'Not set')}")
+                    if assistant.get('firstMessage'):
+                        st.write("**First Message:**")
+                        st.text(assistant['firstMessage'])
+                    
+                    # System Messages
+                    if assistant.get('model', {}).get('messages'):
+                        st.markdown("### System Messages")
+                        st.markdown("---")
+                        for msg in assistant['model']['messages']:
+                            st.write(f"**Role:** {msg.get('role', 'unknown')}")
+                            st.text(msg.get('content', ''))
+                            st.markdown("---")
+                    
+                    # Model URL
+                    st.markdown("### Model Configuration")
+                    st.write(f"**URL:** {assistant['model']['url']}")
+                    if 'temperature' in assistant['model']:
+                        st.write(f"**Temperature:** {assistant['model']['temperature']}")
+
+        except Exception as e:
+            st.error(f"Error fetching assistants: {str(e)}")
 
     elif operation == "Create Assistant":
-        # Create new assistant section
         with st.expander("Create New Assistant", expanded=True):
             # Check for success message in session state and display it
             if 'create_success' in st.session_state:
                 st.success(st.session_state.create_success)
                 # Clear the success message after displaying
                 del st.session_state.create_success
-                # Clear all form fields with empty values
-                st.session_state.update({
-                    'new_name': '',
-                    'new_description': '',
-                    'new_transcriber': 'assembly-ai',  # Default value
-                    'new_language': 'en',  # Default value
-                    'new_model': 'gpt-4',  # Default value
-                    'new_voice_provider': 'vapi',  # Default value
-                    'new_voice_id': '',
-                    'new_first_message': '',
-                    'new_first_message_mode': 'assistant-waits-for-user',  # Default value
-                    'new_messages': []
-                })
-                # Also clear any message-related keys
-                for key in list(st.session_state.keys()):
-                    if key.startswith('new_delete_'):
-                        del st.session_state[key]
                 st.rerun()
 
             with st.form("new_assistant_form"):
-                name = st.text_input("Name*", value=st.session_state.get('new_name', ''), key="new_name")
-                description = st.text_area("Description", value=st.session_state.get('new_description', ''), key="new_description")
+                name = st.text_input("Name*")
                 
                 # Create a two-column layout for settings
                 col1, col2 = st.columns(2)
@@ -368,24 +399,16 @@ def render_assistant_management():
                     transcriber = st.selectbox(
                         "Transcriber Provider*",
                         ["assembly-ai", "deepgram", "azure", "gladia", "talkscriber"],
-                        index=["assembly-ai", "deepgram", "azure", "gladia", "talkscriber"].index(
-                            st.session_state.get('new_transcriber', 'assembly-ai')
-                        ),
-                        key="new_transcriber"
+                        index=["assembly-ai", "deepgram", "azure", "gladia", "talkscriber"].index("deepgram")
                     )
-                    language = st.text_input("Language Code", 
-                                           value=st.session_state.get('new_language', 'en'), 
-                                           key="new_language")
+                    language = st.text_input("Language Code", value="en")
                     
                     # Model settings
                     st.subheader("Model Settings")
                     model = st.selectbox(
                         "Model*",
                         ["gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo"],
-                        index=["gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo"].index(
-                            st.session_state.get('new_model', 'gpt-4')
-                        ),
-                        key="new_model"
+                        index=["gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo"].index("gpt-4")
                     )
                 
                 with col2:
@@ -396,248 +419,205 @@ def render_assistant_management():
                         ["vapi", "11labs", "azure", "cartesia", "custom-voice", "deepgram", 
                          "hume", "lmnt", "neets", "neuphonic", "openai", "playht", 
                          "rime-ai", "smallest-ai", "tavus"],
-                        key="new_voice_provider"
+                        index=["vapi", "11labs", "azure", "cartesia"].index("11labs")
                     )
                     voice_id = st.text_input(
                         "Voice ID",
-                        help="Common options: andrea, burt, drew, joseph, mark",
-                        key="new_voice_id"
+                        value="burt",
+                        help="Common options: andrea, burt, drew, joseph, mark"
                     )
                     
                     # First message settings
                     st.subheader("First Message Settings")
-                    first_message = st.text_area("First Message", key="new_first_message")
+                    first_message = st.text_area("First Message")
                     first_message_mode = st.selectbox(
                         "First Message Mode*",
                         ["assistant-speaks-first",
                          "assistant-speaks-first-with-model-generated-message",
                          "assistant-waits-for-user"],
-                        key="new_first_message_mode"
+                        index=2
                     )
                 
-                # System messages moved to bottom
+                # System messages
                 st.markdown("---")
                 st.subheader("System Messages")
                 message_data = render_message_form("new")
                 
-                # Add Message button right after system messages
-                add_message = st.form_submit_button("Add Message", use_container_width=True)
-                
-                if add_message:
-                    new_msg = message_data["new_message"]
-                    if new_msg["content"]:  # Only add if content is not empty
-                        current_messages = message_data["current_messages"]
-                        current_messages.append(new_msg)
-                        st.session_state[f"new_messages"] = current_messages
-                        st.rerun()
-                
-                # Create Assistant button at the bottom with proper spacing
-                st.markdown("---")
-                col1, col2 = st.columns([3, 1])
-                with col2:
-                    submit = st.form_submit_button("Create Assistant", type="primary", use_container_width=True)
-                
-                # Handle form submission
-                if submit:
-                    if not name:
-                        st.error("Name is required")
-                    else:
-                        # Process deletions
-                        current_messages = message_data["current_messages"]
-                        messages_to_keep = []
-                        for i, msg in enumerate(current_messages):
-                            if not st.session_state.get(f"new_delete_{i}", False):
-                                messages_to_keep.append(msg)
-                        
-                        try:
-                            response = vapi.create_assistant(
-                                name=name,
-                                transcriber_provider=transcriber,
-                                language=language,
-                                model=model,
-                                messages=messages_to_keep if messages_to_keep else None,
-                                first_message=first_message,
-                                first_message_mode=first_message_mode,
-                                voice_provider=voice_provider,
-                                voice_id=voice_id
-                            )
-                            # Store success message in session state
-                            st.session_state.create_success = f"Assistant created successfully! ID: {response.get('id')}"
-                            # Clear the messages from session state
-                            if "new_messages" in st.session_state:
-                                del st.session_state["new_messages"]
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error creating assistant: {str(e)}")
+                # Create form for the rest of the assistant details
+                with st.form("new_assistant_form"):
+                    # ... (other fields remain the same)
+                    
+                    # Create Assistant button
+                    st.markdown("---")
+                    col1, col2 = st.columns([3, 1])
+                    with col2:
+                        submit = st.form_submit_button("Create Assistant", type="primary", use_container_width=True)
+                    
+                    if submit:
+                        if not name:
+                            st.error("Name is required")
+                        else:
+                            try:
+                                # Use the messages from session state
+                                messages = st.session_state.get("new_messages", [])
+                                response = vapi.create_assistant(
+                                    name=name,
+                                    transcriber_provider=transcriber,
+                                    language=language,
+                                    model=model,
+                                    messages=messages,  # Use messages from session state
+                                    first_message=first_message,
+                                    first_message_mode=first_message_mode,
+                                    voice_provider=voice_provider,
+                                    voice_id=voice_id
+                                )
+                                # Clear the messages from session state
+                                if "new_messages" in st.session_state:
+                                    del st.session_state["new_messages"]
+                                st.success(f"Assistant created successfully! ID: {response.get('id')}")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error creating assistant: {str(e)}")
 
     elif operation == "Update Assistant":
-        # Get existing assistants
-        assistants = get_assistants()
-        if not assistants:
-            st.info("No assistants available to update.")
-            return
+        try:
+            # Get existing assistants from VAPI
+            assistants = vapi.get_all_assistants()
+            if not assistants:
+                st.info("No assistants available to update.")
+                return
+                
+            # Select assistant to update
+            selected_assistant = st.selectbox(
+                "Select Assistant to Update",
+                options=assistants,
+                format_func=lambda x: f"{x['name']} ({x['model']['model']})"
+            )
             
-        # Select assistant to update
-        selected_assistant = st.selectbox(
-            "Select Assistant to Update",
-            options=assistants,
-            format_func=lambda x: f"{x['name']} ({x['model']})"
-        )
-        
-        if selected_assistant:
-            with st.form(f"edit_assistant_{selected_assistant['id']}"):
-                name = st.text_input("Name*", 
-                                   value=selected_assistant['name'],
-                                   key=f"edit_name_{selected_assistant['id']}")
-                description = st.text_area("Description",
-                                         value=selected_assistant.get('description', ''),
-                                         key=f"edit_desc_{selected_assistant['id']}")
-                
-                # Transcriber settings
-                st.subheader("Transcriber Settings")
-                transcriber = st.selectbox(
-                    "Transcriber Provider*",
-                    ["assembly-ai", "deepgram", "azure", "gladia", "talkscriber"],
-                    index=["assembly-ai", "deepgram", "azure", "gladia", "talkscriber"].index(
-                        selected_assistant.get('transcriber_provider', 'assembly-ai')
-                    ) if selected_assistant.get('transcriber_provider') in ["assembly-ai", "deepgram", "azure", "gladia", "talkscriber"] else 0,
-                    key=f"edit_transcriber_{selected_assistant['id']}"
-                )
-                language = st.text_input("Language Code",
-                                       value=selected_assistant.get('language', 'en'),
-                                       key=f"edit_language_{selected_assistant['id']}")
-                
-                # Model settings
-                st.subheader("Model Settings")
-                model = st.selectbox(
-                    "Model*",
-                    ["gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo"],
-                    index=["gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo"].index(selected_assistant['model']),
-                    key=f"edit_model_{selected_assistant['id']}"
-                )
-                
-                # System messages
+            if selected_assistant:
+                # System messages section - move outside the form
+                st.markdown("---")
                 st.subheader("System Messages")
-                if f"edit_{selected_assistant['id']}_messages" not in st.session_state:
-                    st.session_state[f"edit_{selected_assistant['id']}_messages"] = selected_assistant.get('messages', [])
-                message_data = render_message_form(f"edit_{selected_assistant['id']}")
-                
-                # Voice settings
-                st.subheader("Voice Settings")
-                voice_providers = ["vapi", "11labs", "azure", "cartesia", "custom-voice", "deepgram",
-                                 "hume", "lmnt", "neets", "neuphonic", "openai", "playht",
-                                 "rime-ai", "smallest-ai", "tavus"]
-                voice_provider = st.selectbox(
-                    "Voice Provider*",
-                    voice_providers,
-                    index=voice_providers.index(selected_assistant.get('voice_provider', 'vapi'))
-                    if selected_assistant.get('voice_provider') in voice_providers else 0,
-                    key=f"edit_voice_provider_{selected_assistant['id']}"
-                )
-                voice_id = st.text_input(
-                    "Voice ID",
-                    value=selected_assistant.get('voice_id', ''),
-                    help="Common options: andrea, burt, drew, joseph, mark",
-                    key=f"edit_voice_id_{selected_assistant['id']}"
+                message_data = render_message_form(
+                    f"edit_{selected_assistant['id']}", 
+                    selected_assistant.get('model', {}).get('messages', [])
                 )
                 
-                # First message settings
-                st.subheader("First Message Settings")
-                first_message = st.text_area("First Message",
-                                           value=selected_assistant.get('first_message', ''),
-                                           key=f"edit_first_message_{selected_assistant['id']}")
-                first_message_modes = ["assistant-speaks-first",
-                                     "assistant-speaks-first-with-model-generated-message",
-                                     "assistant-waits-for-user"]
-                first_message_mode = st.selectbox(
-                    "First Message Mode*",
-                    first_message_modes,
-                    index=first_message_modes.index(selected_assistant.get('first_message_mode', 'assistant-waits-for-user'))
-                    if selected_assistant.get('first_message_mode') in first_message_modes else 2,
-                    key=f"edit_first_message_mode_{selected_assistant['id']}"
-                )
-                
-                # Update button
-                if st.form_submit_button("Update"):
-                    if not name:
-                        st.error("Name is required")
-                    else:
-                        try:
-                            vapi.update_assistant(
-                                assistant_id=selected_assistant['id'],
-                                name=name,
-                                description=description,
-                                transcriber_provider=transcriber,
-                                language=language,
-                                model=model,
-                                messages=message_data["current_messages"] if message_data["current_messages"] else None,
-                                first_message=first_message,
-                                first_message_mode=first_message_mode,
-                                voice_provider=voice_provider,
-                                voice_id=voice_id
-                            )
-                            st.success("Assistant updated successfully!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error updating assistant: {str(e)}")
+                with st.form(f"edit_assistant_{selected_assistant['id']}"):
+                    name = st.text_input("Name*", value=selected_assistant['name'])
+                    
+                    # Transcriber settings
+                    st.subheader("Transcriber Settings")
+                    transcriber = st.selectbox(
+                        "Transcriber Provider*",
+                        ["assembly-ai", "deepgram", "azure", "gladia", "talkscriber"],
+                        index=["assembly-ai", "deepgram", "azure", "gladia", "talkscriber"].index(
+                            selected_assistant['transcriber']['provider']
+                        ) if selected_assistant['transcriber']['provider'] in ["assembly-ai", "deepgram", "azure", "gladia", "talkscriber"] else 0
+                    )
+                    language = st.text_input("Language Code",
+                                           value=selected_assistant['transcriber']['language'])
+                    
+                    # Model settings
+                    st.subheader("Model Settings")
+                    model = st.selectbox(
+                        "Model*",
+                        ["gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo"],
+                        index=["gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo"].index(
+                            selected_assistant['model']['model']
+                        ) if selected_assistant['model']['model'] in ["gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo"] else 0
+                    )
+                    
+                    # Voice settings
+                    st.subheader("Voice Settings")
+                    voice_providers = ["vapi", "11labs", "azure", "cartesia", "custom-voice", "deepgram",
+                                     "hume", "lmnt", "neets", "neuphonic", "openai", "playht",
+                                     "rime-ai", "smallest-ai", "tavus"]
+                    voice_provider = st.selectbox(
+                        "Voice Provider*",
+                        voice_providers,
+                        index=voice_providers.index(selected_assistant['voice']['provider'])
+                        if selected_assistant['voice']['provider'] in voice_providers else 0
+                    )
+                    voice_id = st.text_input(
+                        "Voice ID",
+                        value=selected_assistant['voice']['voiceId'],
+                        help="Common options: andrea, burt, drew, joseph, mark"
+                    )
+                    
+                    # First message settings
+                    st.subheader("First Message Settings")
+                    first_message = st.text_area("First Message",
+                                               value=selected_assistant.get('firstMessage', ''))
+                    first_message_modes = ["assistant-speaks-first",
+                                         "assistant-speaks-first-with-model-generated-message",
+                                         "assistant-waits-for-user"]
+                    first_message_mode = st.selectbox(
+                        "First Message Mode*",
+                        first_message_modes,
+                        index=first_message_modes.index(selected_assistant.get('firstMessageMode', 'assistant-waits-for-user'))
+                        if selected_assistant.get('firstMessageMode') in first_message_modes else 2
+                    )
+                    
+                    # Update button
+                    if st.form_submit_button("Update"):
+                        if not name:
+                            st.error("Name is required")
+                        else:
+                            try:
+                                # Use the messages from session state
+                                messages = st.session_state.get(f"edit_{selected_assistant['id']}_messages", [])
+                                vapi.update_assistant(
+                                    assistant_id=selected_assistant['id'],
+                                    name=name,
+                                    transcriber_provider=transcriber,
+                                    language=language,
+                                    model=model,
+                                    messages=messages,  # Use messages from session state
+                                    first_message=first_message,
+                                    first_message_mode=first_message_mode,
+                                    voice_provider=voice_provider,
+                                    voice_id=voice_id
+                                )
+                                st.success("Assistant updated successfully!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error updating assistant: {str(e)}")
+        
+        except Exception as e:
+            st.error(f"Error loading assistants: {str(e)}")
                 
     else:  # Delete Assistant
-        # Get existing assistants
-        assistants = get_assistants()
-        if not assistants:
-            st.info("No assistants available to delete.")
-            return
-            
-        # Select assistant to delete
-        selected_assistant = st.selectbox(
-            "Select Assistant to Delete",
-            options=assistants,
-            format_func=lambda x: f"{x['name']} ({x['model']})"
-        )
-        
-        if selected_assistant:
-            # Show assistant details
-            st.write(f"**Name:** {selected_assistant['name']}")
-            st.write(f"**Model:** {selected_assistant['model']}")
-            if selected_assistant.get('description'):
-                st.write(f"**Description:** {selected_assistant['description']}")
-            
-            # Confirm deletion
-            if st.button("Delete Assistant", type="primary"):
-                try:
-                    vapi.delete_assistant(selected_assistant['id'])
-                    st.success("Assistant deleted successfully!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error deleting assistant: {str(e)}")
-
-    # Display list of existing assistants only for Update and Delete operations
-    if operation not in ["Create Assistant", "Show Assistants"]:
-        st.subheader("Existing Assistants")
-        assistants = get_assistants()
-        
-        if not assistants:
-            st.info("No assistants created yet.")
-            return
-
-        # Display assistants in a more compact way
-        for assistant in assistants:
-            with st.expander(f"{assistant['name']} ({assistant['model']})"):
-                st.write(f"**ID:** {assistant['id']}")
-                if assistant.get('description'):
-                    st.write(f"**Description:** {assistant['description']}")
-                st.write(f"**Model:** {assistant['model']}")
+        try:
+            # Get existing assistants from VAPI
+            assistants = vapi.get_all_assistants()
+            if not assistants:
+                st.info("No assistants available to delete.")
+                return
                 
-                # Handle timestamps more safely
-                try:
-                    created_at = float(assistant['created_at']) if isinstance(assistant['created_at'], (int, float, str)) else 0
-                    updated_at = float(assistant['updated_at']) if isinstance(assistant['updated_at'], (int, float, str)) else 0
-                    
-                    st.write(f"**Created:** {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(created_at))}")
-                    st.write(f"**Last Updated:** {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(updated_at))}")
-                except (ValueError, TypeError):
-                    st.write("**Created:** Not available")
-                    st.write("**Last Updated:** Not available")
+            # Select assistant to delete
+            selected_assistant = st.selectbox(
+                "Select Assistant to Delete",
+                options=assistants,
+                format_func=lambda x: f"{x['name']} ({x['model']['model']})"
+            )
+            
+            if selected_assistant:
+                # Show assistant details
+                st.write(f"**Name:** {selected_assistant['name']}")
+                st.write(f"**Model:** {selected_assistant['model']['model']}")
+                
+                # Confirm deletion
+                if st.button("Delete Assistant", type="primary"):
+                    try:
+                        vapi.delete_assistant(selected_assistant['id'])
+                        st.success("Assistant deleted successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error deleting assistant: {str(e)}")
+        
+        except Exception as e:
+            st.error(f"Error loading assistants: {str(e)}")
 
 # Initialize Streamlit page
 st.set_page_config(
