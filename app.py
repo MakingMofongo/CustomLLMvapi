@@ -73,6 +73,8 @@ def init_db():
     try:
         conn = sqlite3.connect("requests.db")
         cursor = conn.cursor()
+        
+        # Existing requests table
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS requests (
             id TEXT PRIMARY KEY,
@@ -83,6 +85,26 @@ def init_db():
             completed BOOLEAN
         )
         ''')
+        
+        # New assistants table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS assistants (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            model TEXT NOT NULL,
+            transcriber_provider TEXT,
+            language TEXT,
+            messages TEXT,
+            first_message TEXT,
+            first_message_mode TEXT,
+            voice_provider TEXT,
+            voice_id TEXT,
+            created_at REAL,
+            updated_at REAL
+        )
+        ''')
+        
         conn.commit()
         conn.close()
         logger.info("Dashboard database initialized")
@@ -685,6 +707,86 @@ async def get_latency_metrics():
     return jsonify({
         "message": "Latency metrics endpoint. In a real implementation, this would return aggregated metrics."
     })
+
+# Add function to store assistant data
+async def store_assistant(assistant_data):
+    try:
+        conn = sqlite3.connect("requests.db")
+        cursor = conn.cursor()
+        current_time = time.time()
+        
+        # Convert messages list to JSON string if present
+        messages = json.dumps(assistant_data.get('messages', [])) if assistant_data.get('messages') is not None else None
+        
+        # Check if assistant exists
+        cursor.execute("SELECT id FROM assistants WHERE id = ?", (assistant_data['id'],))
+        exists = cursor.fetchone()
+        
+        if exists:
+            # Update existing assistant
+            cursor.execute('''
+                UPDATE assistants 
+                SET name=?, description=?, model=?, transcriber_provider=?, 
+                    language=?, messages=?, first_message=?, first_message_mode=?,
+                    voice_provider=?, voice_id=?, updated_at=?
+                WHERE id=?
+            ''', (
+                assistant_data.get('name') or None,  # Use None instead of empty string
+                assistant_data.get('description') or None,
+                assistant_data.get('model') or None,
+                assistant_data.get('transcriber_provider') or None,
+                assistant_data.get('language') or None,
+                messages,
+                assistant_data.get('first_message') or None,
+                assistant_data.get('first_message_mode') or None,
+                assistant_data.get('voice_provider') or None,
+                assistant_data.get('voice_id') or None,
+                current_time,
+                assistant_data['id']
+            ))
+        else:
+            # Insert new assistant
+            cursor.execute('''
+                INSERT INTO assistants (
+                    id, name, description, model, transcriber_provider,
+                    language, messages, first_message, first_message_mode,
+                    voice_provider, voice_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                assistant_data['id'],
+                assistant_data.get('name') or None,
+                assistant_data.get('description') or None,
+                assistant_data.get('model') or None,
+                assistant_data.get('transcriber_provider') or None,
+                assistant_data.get('language') or None,
+                messages,
+                assistant_data.get('first_message') or None,
+                assistant_data.get('first_message_mode') or None,
+                assistant_data.get('voice_provider') or None,
+                assistant_data.get('voice_id') or None,
+                current_time,
+                current_time
+            ))
+        
+        conn.commit()
+        conn.close()
+        logger.info(f"Assistant data stored successfully: {assistant_data['id']}")
+    except Exception as e:
+        logger.error(f"Error storing assistant data: {str(e)}")
+        raise
+
+# Add function to delete assistant data
+async def delete_assistant(assistant_id):
+    try:
+        conn = sqlite3.connect("requests.db")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM assistants WHERE id = ?", (assistant_id,))
+        conn.commit()
+        conn.close()
+        logger.info(f"Assistant deleted successfully: {assistant_id}")
+    except Exception as e:
+        logger.error(f"Error deleting assistant: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     # Initialize database for dashboard
